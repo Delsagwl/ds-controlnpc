@@ -1,31 +1,11 @@
 local QBCore = exports['qb-core']:GetCoreObject()
 
 local secuestrando = false
-local pedAtacada = {}
-local handsup = false
-
-local takeHostage = {
-	InProgress = false,
-	agressor = {
-		animDict = "anim@gangops@hostage@",
-		anim = "perp_idle",
-		flag = 49,
-	},
-	hostage = {
-		animDict = "anim@gangops@hostage@",
-		anim = "victim_idle",
-		attachX = -0.24,
-		attachY = 0.11,
-		attachZ = 0.0,
-		flag = 49,
-        ped = nil
-	}
-}
 
 local function loadAnimDict(dict)
     while (not HasAnimDictLoaded(dict)) do
         RequestAnimDict(dict)
-        Wait(5)
+        Wait(10)
     end
 end
 
@@ -46,41 +26,105 @@ function GetClosestPed()
     return closestPed
 end
 
-function textoFlotante(x,y,z, text)
-    SetTextScale(0.32, 0.32)
-    SetTextFont(4)
-    SetTextProportional(1)
-    SetTextOutline(1)
-    SetTextColour(255, 255, 255, 215)
-    SetTextEntry("STRING")
-    SetTextCentre(1)
-    AddTextComponentString(text)
-    DrawText(_x,_y)
+local function RotationToDirection(rotation)
+	local ajustarRotacion =
+	{
+		x = (math.pi / 180) * rotation.x,
+		y = (math.pi / 180) * rotation.y,
+		z = (math.pi / 180) * rotation.z
+	}
+	local direccion =
+	{
+		x = -math.sin(ajustarRotacion.z) * math.abs(math.cos(ajustarRotacion.x)),
+		y = math.cos(ajustarRotacion.z) * math.abs(math.cos(ajustarRotacion.x)),
+		z = math.sin(ajustarRotacion.x)
+	}
+	return direccion
 end
 
-RegisterNetEvent("QBCore:Client:OnPlayerLoaded", function()
+local function RayCastGamePlayCamera(distancia)
+    local cameraRotation = GetGameplayCamRot()
+	local cameraCoord = GetGameplayCamCoord()
+	local direccion = RotationToDirection(cameraRotation)
+	local destino =
+	{
+		x = cameraCoord.x + direccion.x * distancia,
+		y = cameraCoord.y + direccion.y * distancia,
+		z = cameraCoord.z + direccion.z * distancia
+	}
+	local a, b, c, d, e = GetShapeTestResult(StartShapeTestRay(cameraCoord.x, cameraCoord.y, cameraCoord.z, destino.x, destino.y, destino.z, -1, PlayerPedId(), 0))
+	return b, c, e
+end
 
+
+function Laser()
+    local color = {r = 2, g = 241, b = 181, a = 200}
+    local hit, coords = RayCastGamePlayCamera(20.0)
+
+    if hit then
+        local position = GetEntityCoords(PlayerPedId())
+        DrawLine(position.x, position.y, position.z, coords.x, coords.y, coords.z, color.r, color.g, color.b, color.a)
+        DrawMarker(28, coords.x, coords.y, coords.z, 0.0, 0.0, 0.0, 0.0, 180.0, 0.0, 0.1, 0.1, 0.1, color.r, color.g, color.b, color.a, false, true, 2, nil, nil, false)
+    end
+
+    return hit, coords
+end
+
+function Colocar(coords, ped)
+    ClearPedTasks(ped)
+    TaskPlayAnim(ped, "missminuteman_1ig_2", "handsup_base", 8.0, 8.0, -1, 50, 0, false, false, false)
+    FreezeEntityPosition(ped, false)
+    SetBlockingOfNonTemporaryEvents(ped, true)
+    TaskGoStraightToCoord(ped, coords, 15.0, -1, 0.0, 0.0)
+    Wait(3000)
+ end
+
+RegisterNetEvent('ds-npccontrol:client:Colocar', function(data)
+    rayoLaser = not rayoLaser
+
+    if rayoLaser then
+        CreateThread(function()
+            while rayoLaser do
+                local hit, coords = Laser()
+
+                if IsControlJustReleased(0, 38) then
+                    rayoLaser = false
+                    if hit then
+                       Colocar(coords, data.ped)
+                    else
+                        QBCore.Functions.Notify("No se puede colocar ahí", "error")
+                    end
+                elseif IsControlJustReleased(0, 47) then
+                    rayoLaser = false
+                end
+                Wait(0)
+            end
+        end)
+    end
 end)
 
-RegisterNetEvent('qb-npccontrol:client:seguir', function(data)
-    TaskGoToEntity(data.ped, PlayerPedId(), -1, 5.0, 5.0 , 1073741824, 0)
-    TaskFollowToOffsetOfEntity(data.ped, PlayerPedId(), 0.0, -5.0, 0.0, 3.0, -1, 0.0, true)
+RegisterNetEvent('ds-npccontrol:client:seguir', function(data)
+    TaskGoToEntity(data.ped, PlayerPedId(), -1, 2.0, 2.0 , 1073741824, 0)
+    TaskFollowToOffsetOfEntity(data.ped, PlayerPedId(), 0.0, -2.0, 0.0, 2.0, -1, 0.0, true)
     SetPedKeepTask(data.ped, true)
     FreezeEntityPosition(data.ped, false)
 end)
 
-RegisterNetEvent('qb-npccontrol:client:liberar', function(data)
+RegisterNetEvent('ds-npccontrol:client:liberar', function(data)
     FreezeEntityPosition(data.ped, false)
     ClearPedTasks(data.ped)
+    SetPedFleeAttributes(data.ped, 0, 0)
+    TaskReactAndFleePed(data.ped, PlayerPedId())
 end)
 
-RegisterNetEvent('qb-npccontrol:client:arrodillar', function(data)
+RegisterNetEvent('ds-npccontrol:client:arrodillar', function(data)
     ClearPedTasks(data.ped)
     RequestAnimDict('random@arrests')
     while (not HasAnimDictLoaded("random@arrests")) do
         Wait(10)
     end
     TaskPlayAnim(data.ped,"random@arrests","kneeling_arrest_idle", 8.0, 1.0, -1, 2, 0, 0, 0, 0 )
+    SetBlockingOfNonTemporaryEvents(data.ped, true)
     FreezeEntityPosition(data.ped, true)
 end)
 
@@ -114,36 +158,22 @@ RegisterNetEvent('qb-npccontrol:client:sacarvehiculo', function()
     if secuestrando then
         closestPed, closestDistance = GetClosestPed()
         if IsPedInAnyVehicle(closestPed, true) then
-            SetEntityCoords(closestPed, GetEntityCoords(PlayerPedId()), 1, 0, 0, 1)
+            local pos = GetEntityCoords(PlayerPedId())
+            SetEntityCoords(closestPed, pos.x + 1.0, pos.y + 1.0, pos.z + 0.5, 1, 0, 0, 1)
             loadAnimDict("missminuteman_1ig_2")
             TaskPlayAnim(closestPed, "missminuteman_1ig_2", "handsup_base", 8.0, 8.0, -1, 50, 0, false, false, false)
             TaskGoToEntity(closestPed, PlayerPedId(), -1, 5.0, 5.0 , 1073741824, 0)
-            TaskFollowToOffsetOfEntity(closestPed, PlayerPedId(), 0.0, -5.0, 0.0, 3.0, -1, 0.0, true)
+            TaskFollowToOffsetOfEntity(closestPed, PlayerPedId(), 0.0, -2.0, 0.0, 2.0, -1, 0.0, true)
             SetPedKeepTask(closestPed, true)
         end
     end
-end)
-
-RegisterNetEvent("qb-npccontrol:client:th", function(data)
-    takeHostage.InProgress = true
-    ClearPedTasks(PlayerPedId())
-    loadAnimDict("anim@gangops@hostage@")
-    TaskPlayAnim(PlayerPedId(), "anim@gangops@hostage@", "perp_idle", 8.0, -8.0, -1, 168, 0, false, false, false)
-    local targetPed = data.ped
-	loadAnimDict("anim@gangops@hostage@")
-    TaskPlayAnim(targetPed, "anim@gangops@hostage@", "victim_idle", 8.0, -8.0, -1, 168, 0, false, false, false)
-	SetTextEntry_2("STRING")
-	AddTextComponentString("Pulsa [G] para liberar")
-	EndTextCommandPrint(1000, 1)
-    takeHostage.hostage.ped = targetPed
-	AttachEntityToEntity(targetPed, PlayerPedId(), 0, takeHostage.hostage.attachX, takeHostage.hostage.attachY, takeHostage.hostage.attachZ, 0.5, 0.5, 0.0, false, false, false, false, 2, false)
 end)
 
 RegisterNetEvent("ds-npccontrol:Client:TogleSecuestroNPC", function()
     QBCore.Functions.TriggerCallback('ds-npccontrol:server:GetCops', function(cops)
         CurrentCops = cops
         if Config.Debug then
-            Config.MinimumPolice  = 0
+            Config.MinimumPolice = 0
         end
         if CurrentCops >= Config.MinimumPolice then
             secuestrando = not secuestrando
@@ -159,147 +189,108 @@ RegisterNetEvent("ds-npccontrol:Client:TogleSecuestroNPC", function()
     end)
 end)
 
-RegisterNetEvent('ds-npccontrol:client:menuNPC', function(targetPed)
-    pedAtacada[targetPed] = true
-    local  npccontrol = {
+RegisterNetEvent('ds-npccontrol:menu:Rehen', function(targetPed)
+    local MenuRehen = {
         {
             header = "npccontrol",
             isMenuHeader = true
         },
-    }
-    npccontrol[#npccontrol+1] = {
-        header = "Seguir",
-        txt =  "Hacer que te siga",
-        icon = "",
-        params = {
-            event = "qb-npccontrol:client:seguir",
-            args = {
-                ped = targetPed
+        {
+            header = "Seguir",
+            txt =  "Hacer que te siga",
+            icon = "",
+            params = {
+                event = "ds-npccontrol:client:seguir",
+                args = {
+                    ped = targetPed
+                }
             }
-        }
-    }
-    npccontrol[#npccontrol+1] = {
-        header = "Liberar",
-        txt =  "Hacer que se huya",
-        icon = "",
-        params = {
-            event = "qb-npccontrol:client:liberar",
-            args = {
-                ped = targetPed
+        },
+        {
+            header = "Mover",
+            txt =  "Colocar en un punto",
+            icon = "",
+            params = {
+                event = "ds-npccontrol:client:Colocar",
+                args = {
+                    ped = targetPed
+                }
             }
-        }
-    }
-    npccontrol[#npccontrol+1] = {
-        header = "Arrodilar",
-        txt =  "Hacer que se arrodille",
-        icon = "",
-        params = {
-            event = "qb-npccontrol:client:arrodillar",
-            args = {
-                ped = targetPed
+        },
+        {
+            header = "Arrodillar",
+            txt =  "Poner en posición de guardia",
+            icon = "",
+            params = {
+                event = "ds-npccontrol:client:arrodillar",
+                args = {
+                    ped = targetPed
+                }
             }
-        }
-    }
-    npccontrol[#npccontrol+1] = {
-        header = "Meter al coche",
-        txt =  "Meter en el coche",
-        icon = "",
-        params = {
-            event = "qb-npccontrol:client:metervehiculo",
-            args = {
-                ped = targetPed
+        },
+        {
+            header = "Meter al coche",
+            txt =  "Meter en el coche",
+            icon = "",
+            params = {
+                event = "qb-npccontrol:client:metervehiculo",
+                args = {
+                    ped = targetPed
+                }
             }
-        }
-    }
-    npccontrol[#npccontrol+1] = {
-        header = "Coger del cuello",
-        txt =  "Amenazar de muerte",
-        icon = "",
-        params = {
-            event = "qb-npccontrol:client:th",
-            args = {
-                ped = targetPed
+        },
+        {
+            header = "Liberar",
+            txt =  "Hacer que se huya",
+            icon = "",
+            params = {
+                event = "ds-npccontrol:client:liberar",
+                args = {
+                    ped = targetPed
+                }
             }
-        }
+        },
     }
-    npccontrol[#npccontrol+1] = {
-        header = "⬅ Cerrar Menu",
-        txt = "",
-        params = {
-            event = "qb-menu:client:cerrarMenu"
-        }
-    }
-    exports['qb-menu']:openMenu(npccontrol)
+    exports['qb-menu']:openMenu(MenuRehen)
 end)
 
 Citizen.CreateThread(function()
     while true do
         local sleep = 10000
         if secuestrando then
-            sleep = 600
+            sleep = 500
             local ped = PlayerPedId()
             local aiming, targetPed = GetEntityPlayerIsFreeAimingAt(PlayerId(-1))
             if aiming then
                 sleep = 10
-                if DoesEntityExist(targetPed) and not IsPedAPlayer(targetPed) and not IsPedInAnyVehicle(targetPed, false) 
+                local distance = GetDistanceBetweenCoords(GetEntityCoords(ped, true), GetEntityCoords(targetPed, true), false)
+                if distance <  10 then
+                    loadAnimDict("missminuteman_1ig_2")
+                    if DoesEntityExist(targetPed) and not IsPedAPlayer(targetPed) and not IsPedInAnyVehicle(targetPed, false) 
                         and IsPedArmed(PlayerPedId(), 7) and IsEntityAPed(targetPed) and not IsEntityDead(targetPed) then
-                    local distance = GetDistanceBetweenCoords(GetEntityCoords(ped, true), GetEntityCoords(targetPed, true), false)
-                    if distance < 10 then
-                        TaskGoToEntity(targetPed, PlayerPedId(), -1, 5.0, 5.0 , 1073741824, 0)
-                        loadAnimDict("missminuteman_1ig_2")
-                        TaskPlayAnim(targetPed, "missminuteman_1ig_2", "handsup_base", 8.0, 8.0, -1, 50, 0, false, false, false)
-                        TaskFollowToOffsetOfEntity(targetPed, PlayerPedId(), 0.0, -5.0, 0.0, 3.0, -1, 0.0, true)
                         FreezeEntityPosition(targetPed, true)
-                        exports['qb-core']:DrawText("[E] - Controlar NPC", 'right')
-                        if IsControlJustPressed(0, 38) then
-                            TaskSetBlockingOfNonTemporaryEvents(targetPed, true)
-                            TriggerEvent("ds-npccontrol:client:menuNPC", targetPed)
-                            Wait(3000)
-                        end
-                        FreezeEntityPosition(targetPed, false)
+                        TaskPlayAnim(targetPed, "missminuteman_1ig_2", "handsup_base", 8.0, 8.0, -1, 3, 0, false, false, false)
+                        exports['qb-target']:AddTargetEntity(targetPed, {
+                            options = {
+                                {
+                                    type = "client",
+                                    event = "ds-npccontrol:menu:Rehen",
+                                    icon = "fa-solid fa-scythe",
+                                    label = "Ordenar rehen",
+                                    action = function(entity)
+                                        TriggerEvent('ds-npccontrol:menu:Rehen', entity)
+                                    end,
+                                },
+                            },
+                            distance = 2.5
+                        })
                     end
                 end
-            else
-                exports['qb-core']:HideText()
+            end
+            if (not IsEntityPlayingAnim(targetPed, "missminuteman_1ig_2", "handsup_base", 3) and not IsEntityPlayingAnim(targetPed, "missminuteman_1ig_2", "handsup_base", 3)) then
+                TaskPlayAnim(targetPed, "missminuteman_1ig_2", "handsup_base", 8.0, 8.0, -1, 3, 0, false, false, false)
             end
         end
         Wait(sleep)
     end
-end)
-
-
-Citizen.CreateThread(function()
-	while true do
-		local sleep = 1000
-        if takeHostage.InProgress then
-			sleep = 5
-			if not IsEntityPlayingAnim(PlayerPedId(), takeHostage.agressor.animDict, takeHostage.agressor.anim, 3) then
-				TaskPlayAnim(PlayerPedId(), takeHostage.agressor.animDict, takeHostage.agressor.anim, 8.0, -8.0, 100000, takeHostage.agressor.flag, 0, false, false, false)
-			end
-			if not IsEntityPlayingAnim(takeHostage.hostage.ped, takeHostage.hostage.animDict, takeHostage.hostage.anim, 3) then
-				TaskPlayAnim(PlayerPedId(), takeHostage.hostage.animDict, takeHostage.hostage.anim, 8.0, -8.0, 100000, takeHostage.hostage.flag, 0, false, false, false)
-			end
-		end
-		Wait(sleep)
-	end
-end)
-
-CreateThread(function()
-	while true do 
-		local sleep = 1000
-        if takeHostage.InProgress then
-			sleep = 10
-			if IsDisabledControlJustPressed(0,47) then --liberar	
-				takeHostage.InProgress = false
-				loadAnimDict("reaction@shove")
-				TaskPlayAnim(PlayerPedId(), "reaction@shove", "shove_var_a", 8.0, -8.0, -1, 168, 0, false, false, false)
-                DetachEntity(takeHostage.hostage.ped, true, false)
-                loadAnimDict("reaction@shove")
-                TaskPlayAnim(takeHostage.hostage.ped, "reaction@shove", "shoved_back", 8.0, -8.0, -1, 0, 0, false, false, false)
-                Wait(250)
-                ClearPedTasks(PlayerPedId())
-			end
-        end
-		Wait(sleep)
-	end
 end)

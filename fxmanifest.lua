@@ -2,7 +2,7 @@ fx_version 'cerulean'
 game 'gta5'
 
 name "ds-npccontrol"
-description "Script para control de NPC"
+description "Script para control de NPC Rehenes"
 author "Delsa"
 version "1.0.0"
 
